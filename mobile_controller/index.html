@@ -284,11 +284,13 @@
                 setTimeout(() => startRecognition(), 100);
                 return;
             }
-            // Configure recognition
-            recognition.continuous = continuousMode;
+            // Configure recognition FOR EACH START
+            recognition.continuous = continuousMode;  // SET THIS EVERY TIME
             recognition.interimResults = false;   // we only want final results
             recognition.lang = 'en-US';
             recognition.maxAlternatives = 1;
+            
+            console.log('🎤 Starting recognition with continuous:', continuousMode);
 
             // Remove old event listeners to avoid duplicates (by re-assigning)
             recognition.onstart = null;
@@ -301,22 +303,15 @@
             };
 
             recognition.onend = () => {
-                // If continuous mode was on and we didn't manually stop, restart?
-                // But we have a manual stop button, so only auto-restart if continuousMode is true AND we are not stopped manually?
-                // Let's handle: if continuousMode and the stop was not from user? We'll use a flag.
-                if (continuousMode && isListening) {
-                    // Automatic restart after a short delay (only if the end wasn't triggered by stopRecognition)
-                    // We'll restart only if isListening flag is true (meaning we didn't manually call stop)
-                    // However, setListeningUI false is called by stopRecognition, so inside onend we can check a variable.
-                    // Simpler: auto-restart when continuousMode and recognition ended not because of manual stop.
-                    // We'll keep a manualStop flag.
-                    if (!window._manualStop) {
-                        setTimeout(() => {
-                            if (continuousMode && !isListening && !window._manualStop) {
-                                startRecognition();
-                            }
-                        }, 200);
-                    }
+                console.log('Recognition ended. continuousMode:', continuousMode, 'manualStop:', window._manualStop);
+                // In continuous mode, keep restarting automatically
+                if (continuousMode && !window._manualStop) {
+                    console.log('Restarting recognition (continuous mode)');
+                    setTimeout(() => {
+                        if (continuousMode && !window._manualStop && isListening) {
+                            startRecognition();
+                        }
+                    }, 200);
                 } else {
                     setListeningUI(false);
                 }
@@ -352,10 +347,13 @@
                 if (command) {
                     console.log('Sending command:', command);
                     sendCommand(command);
-                    // In single mode, stop after one command
-                    if (!continuousMode && isListening) {
+                    // ONLY in single mode, stop after one command
+                    if (!continuousMode) {
+                        console.log('Single mode - stopping recognition');
+                        window._manualStop = true;
                         setTimeout(() => stopRecognition(), 500);
                     }
+                    // In continuous mode, keep listening
                 } else {
                     lastCommandSpan.innerText = `❓ "${transcript}" not recognized`;
                     setTimeout(() => {

@@ -1,4 +1,8 @@
-import pygame
+try:
+    import pygame
+except ImportError:
+    import pygame_ce as pygame  # Fallback to pygame-ce
+
 import sys
 import threading
 from car import Car

@@ -1,4 +1,7 @@
-import pygame
+try:
+    import pygame
+except ImportError:
+    import pygame_ce as pygame  # Fallback to pygame-ce
 
 class Car:
     DEFAULT_SPEED = 5
