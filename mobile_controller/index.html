@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🎤 Voice Car Controller - Fixed</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e2f;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin: 10px 0;
+        }
+        .status {
+            background: #2d2d44;
+            padding: 15px;
+            border-radius: 20px;
+            margin: 20px auto;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .command {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #ffaa44;
+            background: #00000055;
+            padding: 10px;
+            border-radius: 30px;
+            word-break: break-word;
+        }
+        .microphone-status {
+            font-size: 1rem;
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        .listening {
+            background: #2ecc71;
+            color: #000;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        button {
+            background: #4caf50;
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            font-size: 1.2rem;
+            margin: 10px;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.05s ease;
+        }
+        button:active {
+            transform: scale(0.96);
+        }
+        .mic-btn {
+            background: #e74c3c;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+        }
+        .stop-listening {
+            background: #e67e22;
+        }
+        .manual-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            max-width: 350px;
+            margin: 20px auto;
+        }
+        .manual-btn {
+            background: #3498db;
+            font-size: 1.2rem;
+            padding: 15px;
+        }
+        .speed-btn {
+            background: #f39c12;
+        }
+        input {
+            width: 90%;
+            padding: 12px;
+            margin: 10px auto;
+            font-size: 1rem;
+            border-radius: 30px;
+            border: none;
+            text-align: center;
+            background: #fff;
+            color: #000;
+            font-weight: bold;
+        }
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        .mode-btn {
+            background: #555;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            margin: 5px;
+        }
+        .mode-active {
+            background: #2ecc71;
+            color: #000;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .small-text {
+            font-size: 0.75rem;
+        }
+        .error-msg {
+            color: #ff8888;
+            background: #440000;
+            border-radius: 20px;
+            padding: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Voice Car Control</h1>
+    <div class="status">
+        <div>💻 PC IP Address:</div>
+        <input type="text" id="ipInput" placeholder="e.g., 192.168.0.189" value="192.168.0.189">
+        <div style="margin-top: 5px;">Port: <strong>5000</strong> (Flask server must be running)</div>
+    </div>
+
+    <div class="command" id="lastCommand">⚡ No command</div>
+    <div id="micStatus" class="microphone-status">🔴 Not listening</div>
+
+    <button class="mic-btn" id="micBtn">🎙️ Start Listening (Single)</button>
+    <button class="stop-listening" id="stopListeningBtn" style="display:none;">🛑 Stop Listening</button>
+
+    <div class="mode-selector">
+        <button id="singleModeBtn" class="mode-btn mode-active">Single Command</button>
+        <button id="continuousModeBtn" class="mode-btn">Continuous Mode</button>
+    </div>
+    <div class="small-text">Single mode: listens once, stops after command.<br>Continuous: keeps listening until you stop.</div>
+
+    <h3>📱 Manual Buttons (fallback)</h3>
+    <div class="manual-grid">
+        <button class="manual-btn" data-cmd="forward">⬆️ Forward</button>
+        <button class="manual-btn" data-cmd="backward">⬇️ Backward</button>
+        <button class="manual-btn" data-cmd="left">⬅️ Left</button>
+        <button class="manual-btn" data-cmd="right">➡️ Right</button>
+        <button class="manual-btn" data-cmd="stop">🛑 Stop</button>
+        <button class="manual-btn speed-btn" data-cmd="faster">⚡ Faster</button>
+        <button class="manual-btn speed-btn" data-cmd="slower">🐢 Slower</button>
+    </div>
+
+    <div class="footer">
+        🗣️ Speak: "forward", "backward", "left", "right", "stop", "faster", "slower"<br>
+        📡 Make sure PC is on and firewall allows port 5000.
+    </div>
+
+    <script>
+        let recognition = null;
+        let isListening = false;
+        let continuousMode = false;   // false = single command mode
+        let commandCooldown = false;
+        const COOLDOWN_MS = 500;      // 0.5 sec between same command
+
+        // DOM elements
+        const ipInput = document.getElementById('ipInput');
+        const lastCommandSpan = document.getElementById('lastCommand');
+        const micBtn = document.getElementById('micBtn');
+        const stopListeningBtn = document.getElementById('stopListeningBtn');
+        const micStatusDiv = document.getElementById('micStatus');
+        const singleModeBtn = document.getElementById('singleModeBtn');
+        const continuousModeBtn = document.getElementById('continuousModeBtn');
+
+        // Helper to update UI for listening state
+        function setListeningUI(listening) {
+            isListening = listening;
+            if (listening) {
+                micStatusDiv.innerHTML = '🎙️ LISTENING... Speak now!';
+                micStatusDiv.className = 'microphone-status listening';
+                micBtn.style.background = '#2ecc71';
+                micBtn.innerText = continuousMode ? '🎙️ Listening (Continuous)...' : '🎙️ Listening... (tap to stop)';
+                stopListeningBtn.style.display = 'inline-block';
+            } else {
+                micStatusDiv.innerHTML = '🔴 Not listening';
+                micStatusDiv.className = 'microphone-status';
+                micBtn.style.background = '#e74c3c';
+                micBtn.innerText = continuousMode ? '🎙️ Start Continuous' : '🎙️ Start Listening (Single)';
+                stopListeningBtn.style.display = 'none';
+            }
+        }
+
+        // Function to send command to PC (with debounce)
+        let lastSentCommand = '';
+        let lastSentTime = 0;
+        async function sendCommand(cmd) {
+            // debounce: same command within cooldown period? ignore
+            const now = Date.now();
+            if (cmd === lastSentCommand && (now - lastSentTime) < COOLDOWN_MS) {
+                console.log(`Debounced: ${cmd} ignored (too fast)`);
+                lastCommandSpan.innerText = `⏱️ ${cmd} (too fast)`;
+                setTimeout(() => {
+                    if (lastCommandSpan.innerText.includes('too fast')) lastCommandSpan.innerText = lastSentCommand || "No command";
+                }, 800);
+                return false;
+            }
+            lastSentCommand = cmd;
+            lastSentTime = now;
+
+            const ip = ipInput.value.trim();
+            if (!ip) {
+                alert("Please enter PC IP address");
+                return false;
+            }
+            const url = `http://${ip}:5000/command?move=${cmd}`;
+            lastCommandSpan.innerText = `📤 ${cmd}`;
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    console.log(`Command ${cmd} sent successfully`);
+                    lastCommandSpan.innerText = `✅ ${cmd}`;
+                    setTimeout(() => {
+                        if (lastCommandSpan.innerText === `✅ ${cmd}`) lastCommandSpan.innerText = "Ready";
+                    }, 1200);
+                    return true;
+                } else {
+                    console.error('Server error:', data.message);
+                    lastCommandSpan.innerText = `❌ Server error: ${cmd}`;
+                    return false;
+                }
+            } catch (err) {
+                console.error('Network error:', err);
+                lastCommandSpan.innerText = `🚫 Network error (${cmd})`;
+                alert(`Cannot reach PC server. Check IP and that Flask is running. Error: ${err.message}`);
+                return false;
+            }
+        }
+
+        // Stop recognition properly
+        function stopRecognition() {
+            if (recognition) {
+                try {
+                    recognition.stop();
+                } catch(e) { /* already stopped */ }
+            }
+            setListeningUI(false);
+        }
+
+        // Start recognition according to current mode
+        function startRecognition() {
+            if (!recognition) {
+                alert("Speech recognition not supported in this browser.");
+                return;
+            }
+            if (isListening) {
+                // If already listening, do nothing or restart?
+                stopRecognition();
+                // wait a tiny bit then restart
+                setTimeout(() => startRecognition(), 100);
+                return;
+            }
+            // Configure recognition
+            recognition.continuous = continuousMode;
+            recognition.interimResults = false;   // we only want final results
+            recognition.lang = 'en-US';
+            recognition.maxAlternatives = 1;
+
+            // Remove old event listeners to avoid duplicates (by re-assigning)
+            recognition.onstart = null;
+            recognition.onend = null;
+            recognition.onresult = null;
+            recognition.onerror = null;
+
+            recognition.onstart = () => {
+                setListeningUI(true);
+            };
+
+            recognition.onend = () => {
+                // If continuous mode was on and we didn't manually stop, restart?
+                // But we have a manual stop button, so only auto-restart if continuousMode is true AND we are not stopped manually?
+                // Let's handle: if continuousMode and the stop was not from user? We'll use a flag.
+                if (continuousMode && isListening) {
+                    // Automatic restart after a short delay (only if the end wasn't triggered by stopRecognition)
+                    // We'll restart only if isListening flag is true (meaning we didn't manually call stop)
+                    // However, setListeningUI false is called by stopRecognition, so inside onend we can check a variable.
+                    // Simpler: auto-restart when continuousMode and recognition ended not because of manual stop.
+                    // We'll keep a manualStop flag.
+                    if (!window._manualStop) {
+                        setTimeout(() => {
+                            if (continuousMode && !isListening && !window._manualStop) {
+                                startRecognition();
+                            }
+                        }, 200);
+                    }
+                } else {
+                    setListeningUI(false);
+                }
+                window._manualStop = false;
+            };
+
+            recognition.onresult = (event) => {
+                if (!event.results || event.results.length === 0) {
+                    console.warn('No speech recognition results');
+                    return;
+                }
+                const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                console.log('Recognized:', transcript);
+                // Smart command mapping
+                let command = null;
+                const commandKeywords = {
+                    'forward': 'forward',
+                    'backward': 'backward',
+                    'back': 'backward',
+                    'left': 'left',
+                    'right': 'right',
+                    'stop': 'stop',
+                    'faster': 'faster',
+                    'slower': 'slower',
+                    'slow': 'slower'
+                };
+                for (let key in commandKeywords) {
+                    if (transcript.includes(key)) {
+                        command = commandKeywords[key];
+                        break;
+                    }
+                }
+                if (command) {
+                    console.log('Sending command:', command);
+                    sendCommand(command);
+                    // In single mode, stop after one command
+                    if (!continuousMode && isListening) {
+                        setTimeout(() => stopRecognition(), 500);
+                    }
+                } else {
+                    lastCommandSpan.innerText = `❓ "${transcript}" not recognized`;
+                    setTimeout(() => {
+                        if (lastCommandSpan.innerText.includes('not recognized')) lastCommandSpan.innerText = "Say: forward/backward/left/right/stop/faster/slower";
+                    }, 2000);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.warn('Speech recognition error:', event.error);
+                let errorMsg = '';
+                switch(event.error) {
+                    case 'no-speech':
+                        errorMsg = 'No speech detected. Please speak louder/clearer.';
+                        break;
+                    case 'audio-capture':
+                        errorMsg = 'No microphone access. Check permissions.';
+                        break;
+                    case 'not-allowed':
+                        errorMsg = 'Microphone permission denied. Allow in browser settings.';
+                        break;
+                    default:
+                        errorMsg = `Error: ${event.error}`;
+                }
+                micStatusDiv.innerHTML = `⚠️ ${errorMsg}`;
+                setTimeout(() => {
+                    if (!isListening) micStatusDiv.innerHTML = '🔴 Not listening';
+                }, 2000);
+                // Only stop if not continuous mode, otherwise maybe auto-restart? But we'll stop to allow restart.
+                stopRecognition();
+                if (continuousMode && event.error !== 'no-speech') {
+                    // Attempt restart after 1 sec
+                    setTimeout(() => startRecognition(), 1500);
+                }
+            };
+
+            // Start speech recognition (Web Speech API handles permissions automatically)
+            recognition.start();
+        }
+
+        // Manual stop handler
+        function manualStop() {
+            window._manualStop = true;
+            stopRecognition();
+        }
+
+        // Mode switching
+        function setMode(continuous) {
+            continuousMode = continuous;
+            if (continuous) {
+                singleModeBtn.classList.remove('mode-active');
+                continuousModeBtn.classList.add('mode-active');
+                micBtn.innerText = '🎙️ Start Continuous';
+            } else {
+                continuousModeBtn.classList.remove('mode-active');
+                singleModeBtn.classList.add('mode-active');
+                micBtn.innerText = '🎙️ Start Listening (Single)';
+            }
+            if (isListening) {
+                // restart with new mode
+                stopRecognition();
+                setTimeout(() => startRecognition(), 200);
+            }
+        }
+
+        // Event listeners will be added during initialization
+
+        // Manual buttons (fallback)
+        document.querySelectorAll('.manual-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const cmd = btn.getAttribute('data-cmd');
+                sendCommand(cmd);
+                // If currently listening, we keep listening
+            });
+        });
+
+        // Request microphone permission and initialize Web Speech API
+        function initializeSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = continuousMode;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                console.log('✅ Web Speech API initialized');
+                
+                // Direct button click handler - let Web Speech API handle permissions
+                micBtn.onclick = async (e) => {
+                    console.log('🎙️ Mic button clicked, isListening:', isListening);
+                    try {
+                        if (isListening) {
+                            console.log('🛑 Stopping recognition');
+                            manualStop();
+                        } else {
+                            console.log('▶️ Starting recognition');
+                            window._manualStop = false;
+                            startRecognition();
+                        }
+                    } catch (err) {
+                        console.error('❌ Error:', err);
+                        micStatusDiv.innerHTML = '❌ Error: ' + err.message;
+                    }
+                };
+                
+                // Other button listeners
+                stopListeningBtn.onclick = manualStop;
+                singleModeBtn.onclick = () => setMode(false);
+                continuousModeBtn.onclick = () => setMode(true);
+                
+                console.log('✅ All listeners attached');
+            } else {
+                alert("Your browser does not support Speech Recognition. Use Chrome, Edge, or Safari on mobile.");
+                console.error('❌ Web Speech API not supported');
+                micBtn.disabled = true;
+                stopListeningBtn.disabled = true;
+                singleModeBtn.disabled = true;
+                continuousModeBtn.disabled = true;
+            }
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            console.log('📱 Page loaded, initializing speech recognition...');
+            initializeSpeechRecognition();
+        });
+
+        // Save IP to localStorage
+        const savedIp = localStorage.getItem('pc_ip');
+        if (savedIp) ipInput.value = savedIp;
+        ipInput.addEventListener('change', () => {
+            localStorage.setItem('pc_ip', ipInput.value);
+        });
+        
+        console.log('🚗 Voice Car Game Controller loaded');
+    </script>
+</body>
+</html>
