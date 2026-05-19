@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🎤 Voice Car Control - Remote</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e2f;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin: 10px 0;
+        }
+        .status {
+            background: #2d2d44;
+            padding: 15px;
+            border-radius: 20px;
+            margin: 20px auto;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .command {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #ffaa44;
+            background: #00000055;
+            padding: 10px;
+            border-radius: 30px;
+            word-break: break-word;
+        }
+        .microphone-status {
+            font-size: 1rem;
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        .listening {
+            background: #2ecc71;
+            color: #000;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        button {
+            background: #4caf50;
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            font-size: 1.2rem;
+            margin: 10px;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.05s ease;
+        }
+        button:active {
+            transform: scale(0.96);
+        }
+        .mic-btn {
+            background: #e74c3c;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+        }
+        .manual-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            max-width: 350px;
+            margin: 20px auto;
+        }
+        .manual-btn {
+            background: #3498db;
+            font-size: 1.2rem;
+            padding: 15px;
+        }
+        .speed-btn {
+            background: #f39c12;
+        }
+        input {
+            width: 90%;
+            padding: 12px;
+            margin: 10px auto;
+            font-size: 1rem;
+            border-radius: 30px;
+            border: none;
+            text-align: center;
+            background: #fff;
+            color: #000;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .small-text {
+            font-size: 0.75rem;
+            color: #2ecc71;
+        }
+        .error-msg {
+            color: #ff8888;
+            background: #440000;
+            border-radius: 20px;
+            padding: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Voice Car Control - Remote</h1>
+    <div class="status">
+        <div>🌐 Connected to:</div>
+        <div style="background: #00000055; padding: 10px; border-radius: 15px; font-size: 0.9rem; color: #2ecc71;">
+            https://voicecar.loca.lt
+        </div>
+        <div class="small-text" style="margin-top: 10px;">✅ Connected to PC backend</div>
+    </div>
+
+    <div class="command" id="lastCommand">⚡ No command</div>
+    <div id="micStatus" class="microphone-status">🔴 Not listening</div>
+
+    <button class="mic-btn" id="micBtn">🎙️ Start Listening</button>
+
+    <h3>📱 Manual Control</h3>
+    <div class="manual-grid">
+        <button class="manual-btn" data-cmd="forward">⬆️ Forward</button>
+        <button class="manual-btn" data-cmd="backward">⬇️ Backward</button>
+        <button class="manual-btn" data-cmd="left">⬅️ Left</button>
+        <button class="manual-btn" data-cmd="right">➡️ Right</button>
+        <button class="manual-btn" data-cmd="stop">🛑 Stop</button>
+        <button class="manual-btn speed-btn" data-cmd="faster">⚡ Faster</button>
+        <button class="manual-btn speed-btn" data-cmd="slower">🐢 Slower</button>
+    </div>
+
+    <div class="footer">
+        🗣️ Speak: "forward", "backward", "left", "right", "stop", "faster", "slower"<br>
+        📡 PC backend must be running with localtunnel active
+    </div>
+
+    <script>
+        const API_URL = 'https://voicecar.loca.lt';
+        const COMMANDS = ['forward', 'backward', 'left', 'right', 'stop', 'faster', 'slower'];
+        
+        let recognition = null;
+        let isListening = false;
+
+        const lastCommandSpan = document.getElementById('lastCommand');
+        const micBtn = document.getElementById('micBtn');
+        const micStatusDiv = document.getElementById('micStatus');
+
+        // Initialize Web Speech API
+        function initSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert('Speech Recognition not supported in this browser');
+                return;
+            }
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                setListeningUI(true);
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        transcript += event.results[i][0].transcript.toLowerCase();
+                    }
+                }
+                console.log('Recognized:', transcript);
+
+                // Match commands
+                for (const cmd of COMMANDS) {
+                    if (transcript.includes(cmd)) {
+                        sendCommand(cmd);
+                        return;
+                    }
+                }
+            };
+
+            recognition.onerror = (e) => {
+                console.error('Speech error:', e.error);
+                micStatusDiv.innerText = `❌ Error: ${e.error}`;
+            };
+
+            recognition.onend = () => {
+                setListeningUI(false);
+            };
+        }
+
+        function setListeningUI(listening) {
+            isListening = listening;
+            if (listening) {
+                micStatusDiv.innerHTML = '🎙️ LISTENING... Speak now!';
+                micStatusDiv.className = 'microphone-status listening';
+                micBtn.innerText = '🎙️ Listening...';
+            } else {
+                micStatusDiv.innerHTML = '🔴 Not listening';
+                micStatusDiv.className = 'microphone-status';
+                micBtn.innerText = '🎙️ Start Listening';
+            }
+        }
+
+        async function sendCommand(cmd) {
+            lastCommandSpan.innerText = `📤 ${cmd.toUpperCase()}`;
+            try {
+                const response = await fetch(`${API_URL}/command?move=${cmd}`);
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    console.log(`✅ Command sent: ${cmd}`);
+                    lastCommandSpan.innerText = `✅ ${cmd.toUpperCase()}`;
+                } else {
+                    console.log('❌ Server error:', data.message);
+                    lastCommandSpan.innerText = `❌ Error: ${data.message}`;
+                }
+            } catch (e) {
+                console.log('❌ Network error:', e.message);
+                lastCommandSpan.innerText = `❌ Network Error`;
+            }
+        }
+
+        // Setup buttons
+        micBtn.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+
+        document.querySelectorAll('.manual-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cmd = btn.getAttribute('data-cmd');
+                sendCommand(cmd);
+            });
+        });
+
+        // Initialize
+        initSpeech();
+    </script>
+</body>
+</html>

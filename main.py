@@ -111,8 +111,8 @@ def run_game():
 
 if __name__ == "__main__":
     # Start Flask server in a background thread
-    flask_thread = threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 5000, 'threaded': True, 'debug': False}, daemon=True)
+    flask_thread = threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 3000, 'threaded': True, 'debug': False}, daemon=True)
     flask_thread.start()
-    print("Flask server started on port 5000. Mobile app can connect now.")
+    print("Flask server started on port 3000. Mobile app can connect now.")
     # Run the game loop (main thread)
     run_game()

@@ -145,8 +145,8 @@
     <h1>🎤 Voice Car Control</h1>
     <div class="status">
         <div>💻 PC IP Address:</div>
-        <input type="text" id="ipInput" placeholder="e.g., 192.168.0.189" value="192.168.0.189">
-        <div style="margin-top: 5px;">Port: <strong>5000</strong> (Flask server must be running)</div>
+        <input type="text" id="ipInput" placeholder="e.g., 192.168.68.237" value="192.168.68.237">
+        <div style="margin-top: 5px;">Port: <strong>3000</strong> (Flask server must be running)</div>
     </div>
 
     <div class="command" id="lastCommand">⚡ No command</div>
@@ -174,7 +174,7 @@
 
     <div class="footer">
         🗣️ Speak: "forward", "backward", "left", "right", "stop", "faster", "slower"<br>
-        📡 Make sure PC is on and firewall allows port 5000.
+        📡 Make sure PC is on and connected to port 3000.
     </div>
 
     <script>
@@ -192,6 +192,23 @@
         const micStatusDiv = document.getElementById('micStatus');
         const singleModeBtn = document.getElementById('singleModeBtn');
         const continuousModeBtn = document.getElementById('continuousModeBtn');
+
+        // Auto-detect server IP on page load
+        async function autoDetectServer() {
+            try {
+                const response = await fetch('/server-info');
+                if (response.ok) {
+                    const data = await response.json();
+                    ipInput.value = data.ip;
+                    console.log(`Auto-detected server IP: ${data.ip}:${data.port}`);
+                }
+            } catch (e) {
+                console.log('Could not auto-detect server IP, using default');
+            }
+        }
+
+        // Run auto-detection when page loads
+        window.addEventListener('load', autoDetectServer);
 
         // Helper to update UI for listening state
         function setListeningUI(listening) {
@@ -233,7 +250,7 @@
                 alert("Please enter PC IP address");
                 return false;
             }
-            const url = `http://${ip}:5000/command?move=${cmd}`;
+            const url = `http://${ip}:3000/command?move=${cmd}`;
             lastCommandSpan.innerText = `📤 ${cmd}`;
             try {
                 const controller = new AbortController();
